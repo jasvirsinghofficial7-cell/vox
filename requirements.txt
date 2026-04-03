@@ -1,0 +1,8 @@
+streamlit
+streamlit-option-menu
+speechbrain
+sounddevice
+noisereduce
+numpy
+scipy
+soundfile
