@@ -1,4 +1,4 @@
-# watcher.py - OS Level Background Security Agent (The God-Mode UWP Fix)
+# watcher.py - OS Level Background Security Agent (With Anti-Spoofing & 1-Hour Session)
 import os
 import sys
 import time
@@ -47,7 +47,8 @@ def get_locks():
         except: return {}
     return {}
 
-def update_lock_time(process_name, added_seconds=15):
+# 🕒 UPGRADE: Default whitelist time set to 3600 seconds (1 Hour)
+def update_lock_time(process_name, added_seconds=3600):
     locks = get_locks()
     for app, data in locks.items():
         if data.get("process", "").lower() == process_name.lower():
@@ -60,6 +61,25 @@ def record_audio(duration=4, fs=16000):
     recording = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype="float32")
     sd.wait()
     return recording.flatten()
+
+def is_parent_unlocked(proc, locks):
+    """Check if the parent of this process is a whitelisted/unlocked app."""
+    try:
+        shell_names = ["cmd.exe", "powershell.exe", "conhost.exe", "bash.exe"]
+        if proc.name().lower() not in shell_names:
+            return False
+
+        parent = proc.parent()
+        if not parent: return False
+        
+        parent_name = parent.name().lower()
+        for app, data in locks.items():
+            if data.get("process", "").lower() == parent_name:
+                if time.time() < data.get("unlocked_until", 0):
+                    return True
+    except:
+        pass
+    return False
 
 # 🧠 API that connects UI to Python AI Logic
 class AuthAPI:
@@ -82,6 +102,18 @@ class AuthAPI:
             raw_audio = record_audio(4)
             if np.max(np.abs(raw_audio)) > 0.005:
                 clean_audio = nr.reduce_noise(y=raw_audio, sr=16000)
+
+                # 🛡️ UPGRADE: Librosa Anti-Spoofing / Liveness Check 
+                try:
+                    from audio_utils import detect_liveness
+                    is_live, spoof_reason = detect_liveness(clean_audio)
+                    if not is_live:
+                        pyautogui.press('r')
+                        return {"success": False, "msg": f"🚨 Spoof Detected: {spoof_reason}"}
+                except ImportError:
+                    pass # Silently pass if detect_liveness is not yet in audio_utils.py
+
+                # 🧠 Deep Learning Biometric Check
                 tensor = torch.from_numpy(clean_audio).float().unsqueeze(0).to(DEVICE)
                 live_emb = classifier.encode_batch(tensor).squeeze().cpu().numpy()
                 
@@ -89,7 +121,8 @@ class AuthAPI:
                 
                 if sim >= 0.60:
                     pyautogui.press('a')  
-                    update_lock_time(self.current_process, 15)
+                    # 🕒 UPGRADE: 3600 Seconds (1 Hour) Session Timeout
+                    update_lock_time(self.current_process, 3600)
                     threading.Timer(1.5, self.launch_and_close).start()
                     return {"success": True, "msg": f"✅ Access Granted! ({sim*100:.1f}%)"}
                 else:
@@ -98,6 +131,7 @@ class AuthAPI:
             else:
                 return {"success": False, "msg": "🔇 No audio detected. Try again."}
         except Exception as e:
+            print(f"Error in verify_voice: {e}")
             return {"success": False, "msg": "🚨 AI Engine Error!"}
 
     def launch_and_close(self):
@@ -105,12 +139,14 @@ class AuthAPI:
         window.hide() 
         is_popup_open = False
         try:
+            # 🚀 Shell-less App Launch (Avoids spawning cmd.exe)
             if "whatsapp" in self.current_process.lower():
-                os.system("start whatsapp:") 
+                os.startfile("whatsapp:")
             elif self.current_exe and os.path.exists(self.current_exe) and "WindowsApps" not in self.current_exe:
-                subprocess.Popen(f'"{self.current_exe}"', shell=True)
+                subprocess.Popen([self.current_exe], shell=False)
             else:
-                subprocess.Popen(f"start {self.current_process}", shell=True)
+                # If we don't have the path, try to start common apps directly
+                os.startfile(self.current_process)
         except Exception as e:
             print(f"⚠️ Launch error: {e}")
 
@@ -210,10 +246,11 @@ def background_watcher():
 
             locks = get_locks()
             
-            # 🔥 THE GOD-MODE LOOP: Bypasses Access Denied by directly mapping process names 🔥
-            for proc in psutil.process_iter(['pid', 'name']):
+            for proc in psutil.process_iter(['pid', 'name', 'exe']):
                 try:
                     name = proc.info.get('name')
+                    exe_path = proc.info.get('exe') or ""
+                    
                     if not name: continue
 
                     for app_disp, data in locks.items():
@@ -222,22 +259,43 @@ def background_watcher():
                         if target and data.get("locked", False) and target == name.lower():
                             unlocked_until = data.get("unlocked_until", 0)
                             
-                            # Agar timer khatam ho gaya hai toh Seedha Marde!
+                            # Check session timeout
                             if time.time() > unlocked_until:
                                 
-                                # ☢️ NUCLEAR COMMAND: Ye Windows ki har security bypass karke app kill kar degi (/T means child process bhi marega)
-                                os.system(f"taskkill /f /im {name} /t >nul 2>&1")
-                                print(f"🔪 BLOCKED & NUKED: {name}")
+                                # 🛡️ EXEMPT self and immediate shell parent
+                                current_pid = os.getpid()
+                                try:
+                                    if proc.pid == current_pid:
+                                        continue
+                                    
+                                    parent = psutil.Process(current_pid).parent()
+                                    if parent and proc.pid == parent.pid:
+                                        if parent.name().lower() in ["cmd.exe", "powershell.exe", "bash.exe"]:
+                                            continue
+                                    
+                                    if is_parent_unlocked(proc, locks):
+                                        continue
+                                except: pass
 
-                                # Popup dikhao (Agar pehle se nahi khula hai)
+                                # 🔪 NATIVE KILL
+                                try:
+                                    for child in proc.children(recursive=True):
+                                        try: child.kill()
+                                        except: pass
+                                    proc.kill()
+                                    print(f"🔪 BLOCKED & NUKED: {name}")
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    pass
+
+                                # Show Auth Popup
                                 if not is_popup_open:
                                     is_popup_open = True
-                                    api.set_target(name, "")
+                                    api.set_target(name, exe_path)
                                     window.evaluate_js(f"setApp('{app_disp}')")
                                     window.show()
                                 break
                 except Exception:
-                    pass # Ignore errors and keep scanning!
+                    pass 
 
         except Exception as e:
             pass

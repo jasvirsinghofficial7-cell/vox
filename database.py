@@ -46,10 +46,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass # Column already exists
         
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN last_ip TEXT")
-    except sqlite3.OperationalError:
-        pass # Column already exists
         
     conn.commit()
     conn.close()
@@ -189,31 +185,6 @@ def load_user_profile(username: str) -> dict:
     if row:
         return dict(row)
     return {}
-
-
-def update_user_ip(username: str, ip: str):
-    """Record user's last known IP."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET last_ip = ? WHERE username = ?", (ip, username.strip().lower()))
-    conn.commit()
-    conn.close()
-
-
-def get_user_ip(username: str) -> str | None:
-    """Fetch user's last known IP."""
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT last_ip FROM users WHERE username = ?", (username.strip().lower(),))
-        row = cur.fetchone()
-    except sqlite3.OperationalError:
-        row = None
-    conn.close()
-    
-    if row and "last_ip" in row.keys() and row["last_ip"]:
-        return row["last_ip"]
-    return None
 
 
 def update_user_profile(old_username: str, new_username: str, new_password: str, new_mobile: str) -> tuple[bool, str]:

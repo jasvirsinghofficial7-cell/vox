@@ -64,15 +64,13 @@ from database import (
 
     load_voiceprint_from_db, save_voiceprint_to_db,
 
-    update_user_profile, load_user_profile, update_user_ip,
+    update_user_profile, load_user_profile,
     
 )
 
 from audio_utils import normalize_audio, audio_to_embedding, get_vbcable_device_id, DEVICE, COMPUTE_NODE
 
-from network_utils import get_local_ip
 
-from secure_call import show_secure_call_page
 
 
 
@@ -432,7 +430,6 @@ def show_auth_page():
 
                     with open("active_user.txt", "w") as f: f.write(st.session_state.current_user)
 
-                    update_user_ip(st.session_state.current_user, get_local_ip())
 
                     st.rerun()
 
@@ -594,14 +591,14 @@ def show_verification_page(classifier, username: str):
 
     with col2:
         st.markdown(f"""
-        <div class='live-box'>
-            <h4 style='color:#3273f6; margin-top:0;'>Node Status</h4>
-            <hr>
-            <p style='margin:5px 0;'>👤 User: <b style="color:white;">{username.upper()}</b></p>
-            <p style='margin:5px 0;'>🟢 Engine: <b style="color:white;">Standard Auth</b></p>
-            <p style='margin:5px 0;'>🔒 Encryption: <b style="color:white;">AES-256</b></p>
-        </div>
-        """, unsafe_allow_html=True)
+<div class='live-box'>
+    <h4 style='color:#3273f6; margin-top:0;'>Node Status</h4>
+    <hr>
+    <p style='margin:5px 0;'>👤 User: <b style="color:white;">{username.upper()}</b></p>
+    <p style='margin:5px 0;'>🟢 Engine: <b style="color:white;">Standard Auth</b></p>
+    <p style='margin:5px 0;'>🔒 Encryption: <b style="color:white;">AES-256</b></p>
+</div>
+""", unsafe_allow_html=True)
 
 
 def save_locks_to_file():
@@ -762,24 +759,15 @@ def show_voxauth_live_page(classifier, separator, username: str):
        
 
         st.markdown(f"""
-
-        <div class='live-box' style='height: 100%;'>
-
-            <h4 style='color:#3273f6; margin-top:0;'>System Architecture</h4>
-
-            <hr>
-
-            <p>👤 Entity: <b style="color:white;">{username.upper()}</b></p>
-
-            <p>🟢 Protocol: <b style="color:white;">{engine_status}</b></p>
-
-            <p>⚙️ Compute Node: <b style='color:#0df0e3;'>{COMPUTE_NODE}</b></p>
-
-            <p>⏱️ Expected Latency: <b style="color:white;">{latency_warning if 'Beta' in auth_mode else 'Real-Time'}</b></p>
-
-        </div>
-
-        """, unsafe_allow_html=True)
+<div class='live-box' style='height: 100%;'>
+    <h4 style='color:#3273f6; margin-top:0;'>System Architecture</h4>
+    <hr>
+    <p>👤 Entity: <b style="color:white;">{username.upper()}</b></p>
+    <p>🟢 Protocol: <b style="color:white;">{engine_status}</b></p>
+    <p>⚙️ Compute Node: <b style='color:#0df0e3;'>{COMPUTE_NODE}</b></p>
+    <p>⏱️ Expected Latency: <b style="color:white;">{latency_warning if 'Beta' in auth_mode else 'Real-Time'}</b></p>
+</div>
+""", unsafe_allow_html=True)
 
 
 
@@ -1020,9 +1008,9 @@ else:
 
             "Modules",
 
-            ["Enrollment", "Verification", "App Vault", "VoxAuth with Voice Sep", "Secure Call", "Profile"],
+            ["Enrollment", "Verification", "App Vault", "VoxAuth with Voice Sep", "Profile"],
 
-            icons=["fingerprint", "shield-lock", "grid", "activity", "telephone", "person"],
+            icons=["fingerprint", "shield-lock", "grid", "activity", "person"],
 
             default_index=3,
 
@@ -1090,6 +1078,5 @@ else:
 
     elif selected == "VoxAuth with Voice Sep": show_voxauth_live_page(classifier, separator, user)
 
-    elif selected == "Secure Call": show_secure_call_page(classifier, separator, user)
 
     elif selected == "Profile": show_profile_page(user)
