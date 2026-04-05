@@ -809,9 +809,9 @@ def show_voxauth_live_page(classifier, separator, username: str):
 
         CHUNK_DURATION = 1.5
 
-        VERIFY_THRESH = 0.43
+        VERIFY_THRESH = 0.45
 
-        HOLD_THRESH = 0.35
+        HOLD_THRESH = 0.40
 
 
 
@@ -1008,11 +1008,11 @@ else:
 
             "Modules",
 
-            ["Enrollment", "Verification", "App Vault", "VoxAuth with Voice Sep", "Profile"],
+            ["Profile", "Enrollment", "Verification", "App Vault", "VoxAuth with Voice Sep"],
 
-            icons=["fingerprint", "shield-lock", "grid", "activity", "person"],
+            icons=["person", "fingerprint", "shield-lock", "grid", "activity"],
 
-            default_index=3,
+            default_index=4,
 
             styles={
 
@@ -1070,13 +1070,12 @@ else:
 
     # Page Routing
 
-    if selected == "Enrollment": show_enrollment_page(classifier, user)
+    if selected == "Profile": show_profile_page(user)
+
+    elif selected == "Enrollment": show_enrollment_page(classifier, user)
 
     elif selected == "Verification": show_verification_page(classifier, user)
 
     elif selected == "App Vault": show_app_locker_page(classifier, user)
 
     elif selected == "VoxAuth with Voice Sep": show_voxauth_live_page(classifier, separator, user)
-
-
-    elif selected == "Profile": show_profile_page(user)

@@ -236,71 +236,92 @@ html_content = """
 def background_watcher():
     global is_popup_open, window, api
 
-    time.sleep(1) 
+    time.sleep(1)
+
+    # Track PIDs we've already killed this cycle to avoid double-popup
+    recently_killed = {}   # pid -> timestamp
 
     while True:
         try:
             if is_popup_open:
-                time.sleep(0.5)
-                continue 
+                time.sleep(0.3)
+                continue
 
             locks = get_locks()
-            
+            triggered = False   # Only trigger ONE popup per watcher cycle
+
             for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                if triggered:
+                    break
                 try:
                     name = proc.info.get('name')
+                    pid  = proc.info.get('pid')
                     exe_path = proc.info.get('exe') or ""
-                    
+
                     if not name: continue
+
+                    # Skip PIDs we killed very recently (within 3 seconds)
+                    if pid in recently_killed:
+                        if time.time() - recently_killed[pid] < 3.0:
+                            continue
+                        else:
+                            del recently_killed[pid]
 
                     for app_disp, data in locks.items():
                         target = data.get("process", "").lower()
-                        
-                        if target and data.get("locked", False) and target == name.lower():
-                            unlocked_until = data.get("unlocked_until", 0)
-                            
-                            # Check session timeout
-                            if time.time() > unlocked_until:
-                                
-                                # 🛡️ EXEMPT self and immediate shell parent
-                                current_pid = os.getpid()
-                                try:
-                                    if proc.pid == current_pid:
-                                        continue
-                                    
-                                    parent = psutil.Process(current_pid).parent()
-                                    if parent and proc.pid == parent.pid:
-                                        if parent.name().lower() in ["cmd.exe", "powershell.exe", "bash.exe"]:
-                                            continue
-                                    
-                                    if is_parent_unlocked(proc, locks):
-                                        continue
+
+                        if not (target and data.get("locked", False)):
+                            continue
+                        if target != name.lower():
+                            continue
+
+                        # Check session timeout — if still whitelisted, allow
+                        unlocked_until = data.get("unlocked_until", 0)
+                        if time.time() < unlocked_until:
+                            continue
+
+                        # Exempt the watcher process itself
+                        current_pid = os.getpid()
+                        try:
+                            if proc.pid == current_pid:
+                                continue
+                            parent = psutil.Process(current_pid).parent()
+                            if parent and proc.pid == parent.pid:
+                                if parent.name().lower() in ["cmd.exe", "powershell.exe", "bash.exe"]:
+                                    continue
+                            if is_parent_unlocked(proc, locks):
+                                continue
+                        except:
+                            pass
+
+                        # 🔪 Kill the process
+                        try:
+                            for child in proc.children(recursive=True):
+                                try: child.kill()
                                 except: pass
+                            proc.kill()
+                            recently_killed[pid] = time.time()
+                            print(f"🔪 BLOCKED & NUKED: {name} (PID {pid})")
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
 
-                                # 🔪 NATIVE KILL
-                                try:
-                                    for child in proc.children(recursive=True):
-                                        try: child.kill()
-                                        except: pass
-                                    proc.kill()
-                                    print(f"🔪 BLOCKED & NUKED: {name}")
-                                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                    pass
+                        # Show Auth Popup — only once, then break both loops
+                        if not is_popup_open:
+                            is_popup_open = True
+                            api.set_target(name, exe_path)
+                            window.evaluate_js(f"setApp('{app_disp}')")
+                            window.show()
 
-                                # Show Auth Popup
-                                if not is_popup_open:
-                                    is_popup_open = True
-                                    api.set_target(name, exe_path)
-                                    window.evaluate_js(f"setApp('{app_disp}')")
-                                    window.show()
-                                break
-                except Exception:
-                    pass 
+                        triggered = True
+                        break   # Stop iterating apps for this proc
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
+                    pass
 
         except Exception as e:
-            pass
-        
-        time.sleep(0.05)
+            print(f"Watcher error: {e}")
+
+        time.sleep(0.3)  # Slightly longer sleep reduces CPU and race conditions
 
 if __name__ == "__main__":
     api = AuthAPI()
